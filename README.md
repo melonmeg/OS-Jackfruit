@@ -6,8 +6,8 @@
 
 **Team Members:**
 
-* Meghna Sanjeev - SRN: PES1UG24CS269
-* Mrinmayi Raman - SRN: PES1UG24CS278
+* Meghna Sanjeev — SRN: PES1UG24CS269
+* Mrinmayi Raman — SRN: PES1UG24CS278
 
 ---
 
@@ -17,41 +17,71 @@ This project implements a **lightweight multi-container runtime in C** along wit
 
 The system supports:
 
-* Creation of isolated containers using Linux namespaces
-* Supervision of multiple containers
-* Logging of container output
-* Memory monitoring via a custom kernel module
-* Enforcement of soft and hard memory limits
+* Container isolation using namespaces
+* Multi-container supervision
+* Logging using bounded buffers
+* Kernel-level memory monitoring
+* Scheduling demonstration
 
 ---
 
 ## 3. Build, Load, and Run Instructions
 
-### 🔹 Build
+### 🔹 1. Build the Project
 
 ```bash
+make clean
 make
 ```
 
+**Use:**
+
+* Builds engine, workloads, and kernel module
+
 ---
 
-### 🔹 Load Kernel Module
+### 🔹 2. Compile Workloads (IMPORTANT)
 
 ```bash
-sudo insmod monitor.ko
+gcc -static -O2 -o cpu_hog cpu_hog.c
+gcc -static -O2 -o memory_hog memory_hog.c
+gcc -static -O2 -o io_pulse io_pulse.c
+```
+
+**Use:**
+
+* Ensures binaries run inside Alpine containers
+
+---
+
+### 🔹 3. Setup Container Filesystem
+
+```bash
+mkdir rootfs-base
+wget https://dl-cdn.alpinelinux.org/alpine/v3.20/releases/x86_64/alpine-minirootfs-3.20.3-x86_64.tar.gz
+tar -xzf alpine-minirootfs-3.20.3-x86_64.tar.gz -C rootfs-base
 ```
 
 ---
 
-### 🔹 Verify Device
+### 🔹 4. Copy Workloads
 
 ```bash
-ls -l /dev/container_monitor
+cp cpu_hog memory_hog io_pulse rootfs-base/
 ```
 
 ---
 
-### 🔹 Start Supervisor
+### 🔹 5. Create Container Filesystems
+
+```bash
+cp -a rootfs-base rootfs-alpha
+cp -a rootfs-base rootfs-beta
+```
+
+---
+
+### 🔹 6. Start Supervisor
 
 ```bash
 sudo ./engine supervisor ./rootfs-base
@@ -59,16 +89,7 @@ sudo ./engine supervisor ./rootfs-base
 
 ---
 
-### 🔹 Create Container Filesystems
-
-```bash
-cp -a ./rootfs-base ./rootfs-alpha
-cp -a ./rootfs-base ./rootfs-beta
-```
-
----
-
-### 🔹 Start Containers
+### 🔹 7. Start Containers
 
 ```bash
 sudo ./engine start alpha ./rootfs-alpha /bin/sh
@@ -77,7 +98,7 @@ sudo ./engine start beta ./rootfs-beta /bin/sh
 
 ---
 
-### 🔹 List Containers
+### 🔹 8. List Containers
 
 ```bash
 sudo ./engine ps
@@ -85,7 +106,7 @@ sudo ./engine ps
 
 ---
 
-### 🔹 View Logs
+### 🔹 9. View Logs
 
 ```bash
 sudo ./engine logs alpha
@@ -93,35 +114,76 @@ sudo ./engine logs alpha
 
 ---
 
-### 🔹 Run Workload
+### 🔹 10. Run Container
 
 ```bash
-sudo ./engine start memsoft ./rootfs-soft "./memory_hog" --soft-mib 20 --hard-mib 80
+sudo ./engine run test ./rootfs-alpha "echo HELLO && sleep 2"
 ```
 
 ---
 
-### 🔹 Stop Containers
+### 🔹 11. Stop Container
 
 ```bash
 sudo ./engine stop alpha
-sudo ./engine stop beta
 ```
 
 ---
 
-### 🔹 Check Kernel Logs
+### 🔹 12. Load Kernel Module
 
 ```bash
+sudo insmod monitor.ko
+ls -l /dev/container_monitor
+```
+
+---
+
+### 🔹 13. Memory Test
+
+```bash
+sudo ./engine run memtest ./rootfs-alpha "/memory_hog"
 sudo dmesg | tail
 ```
 
 ---
 
-### 🔹 Unload Module
+### 🔹 14. Scheduling Demonstration
 
 ```bash
+sudo ./engine start cpu1 ./rootfs-alpha "/cpu_hog"
+sudo ./engine start cpu2 ./rootfs-beta "/cpu_hog"
+```
+
+```bash
+sudo ./engine ps
+```
+
+```bash
+watch -n 0.2 "ps -o pid,stat,cmd -p <PID1>,<PID2>"
+```
+
+---
+
+### 🔹 15. Cleanup
+
+```bash
+sudo ./engine stop alpha
+sudo ./engine stop beta
+sudo ./engine stop cpu1
+sudo ./engine stop cpu2
 sudo rmmod monitor
+ps -el | grep Z
+```
+
+---
+
+### 🔹 16. Reset Environment
+
+```bash
+rm -rf rootfs-alpha rootfs-beta
+cp -a rootfs-base rootfs-alpha
+cp -a rootfs-base rootfs-beta
 ```
 
 ---
@@ -131,135 +193,159 @@ sudo rmmod monitor
 ### 1. Multi-container supervision
 
 ![Multi Container](screenshots/multi_container.png)
-*Two containers (alpha and beta) running under the same supervisor*
+**Figure 1:** Two containers running under the same supervisor.
 
 ---
 
-### 2. Metadata tracking (ps command)
+### 2. Metadata tracking
 
-![PS Output](screenshots/ps_metadata.png)
-*Container metadata including PID, state, and memory limits displayed using `ps`*
+![PS](screenshots/ps_metadata.png)
+**Figure 2:** Container metadata showing PID, state, and limits.
 
 ---
 
-### 3. Bounded-buffer logging
+### 3. Logging system
 
-![Logging](screenshots/logging_output.png)
-*Container output captured and stored through the logging pipeline*
+![Logs](screenshots/logging_output.png)
+**Figure 3:** Output captured using bounded-buffer logging.
 
 ---
 
 ### 4. CLI and IPC
 
 ![IPC](screenshots/cli_ipc.png)
-*CLI command sent to supervisor and executed via UNIX socket IPC*
+**Figure 4:** CLI commands handled via IPC.
 
 ---
 
 ### 5. Soft-limit warning
 
-![Soft Limit](screenshots/soft_limit.png)
-*Kernel module logs warning when container exceeds soft memory limit*
+![Soft](screenshots/soft_limit.png)
+**Figure 5:** Kernel warning for soft memory limit.
 
 ---
 
 ### 6. Hard-limit enforcement
 
-![Hard Limit](screenshots/hard_limit.png)
-*Container terminated after exceeding hard memory limit, reflected in metadata*
+![Hard](screenshots/hard_limit.png)
+**Figure 6:** Container terminated after exceeding hard limit.
 
 ---
 
 ### 7. Scheduling experiment
 
 ![Scheduling](screenshots/scheduling.png)
-*CPU-intensive workload demonstrating scheduling behavior using `cpu_hog`*
+**Figure 7:** CPU scheduling demonstration.
 
 ---
 
 ### 8. Clean teardown
 
-![Clean Teardown](screenshots/clean_teardown.png)
-*Containers terminated cleanly with no zombie processes remaining*
+![Cleanup](screenshots/clean_teardown.png)
+**Figure 8:** Containers stopped with no zombie processes.
 
 ---
 
 ## 5. Engineering Analysis
 
-This project demonstrates several key operating system concepts:
+### Process Isolation
 
-* **Namespace Isolation:**
-  Using `clone()` with PID, UTS, and mount namespaces ensures each container runs in an isolated environment.
+Namespaces isolate container processes.
 
-* **Filesystem Isolation:**
-  `chroot()` restricts container processes to a separate filesystem, preventing access to host files.
-
-* **Process Management:**
-  The supervisor manages container lifecycle, ensuring proper creation, execution, and cleanup.
-
-* **Memory Monitoring:**
-  The kernel module periodically checks RSS memory usage and enforces limits.
-
-* **Scheduling:**
-  Round-robin scheduling using `SIGSTOP` and `SIGCONT` demonstrates time-sharing between processes.
+**Analysis:**
+Provides lightweight virtualization.
 
 ---
 
-## 6. Design Decisions and Tradeoffs
+### Filesystem Isolation
 
-### Namespace Isolation
+Using `chroot()` restricts file access.
 
-* **Choice:** Used `clone()` with namespaces
-* **Tradeoff:** Simpler than full container runtimes but less secure
-* **Reason:** Suitable for educational implementation
-
----
-
-### Supervisor Architecture
-
-* **Choice:** Single supervisor process
-* **Tradeoff:** Centralized control but potential bottleneck
-* **Reason:** Easier lifecycle management
+**Analysis:**
+Simplifies isolation but is less secure.
 
 ---
 
-### IPC & Logging
+### Kernel Communication
 
-* **Choice:** UNIX sockets + pipes
-* **Tradeoff:** Lightweight but limited scalability
-* **Reason:** Efficient communication within local system
+Uses `ioctl` with `/dev/container_monitor`.
+
+**Analysis:**
+Allows structured kernel-user interaction.
 
 ---
 
-### Kernel Monitor
+### Memory Enforcement
 
-* **Choice:** Timer-based monitoring
-* **Tradeoff:** Slight delay in enforcement
-* **Reason:** Avoids continuous overhead
+Kernel enforces soft and hard limits.
+
+**Analysis:**
+Ensures processes cannot bypass limits.
 
 ---
 
 ### Scheduling
 
-* **Choice:** Signal-based round-robin
-* **Tradeoff:** Not precise like kernel scheduler
-* **Reason:** Demonstrates scheduling concept clearly
+Uses `SIGSTOP` and `SIGCONT`.
+
+**Analysis:**
+Demonstrates round-robin scheduling.
 
 ---
 
-## 7. Scheduler Experiment Results
+### Logging
 
-* CPU-intensive workloads (`cpu_hog`) were executed
-* Observed that CPU usage is shared between processes
-* Multiple containers showed time-sliced execution
+Producer-consumer model used.
 
-**Observation:**
-Linux scheduler distributes CPU time fairly across processes, even when running inside containers.
+**Analysis:**
+Ensures safe concurrent logging.
+
+---
+
+### IPC
+
+Uses UNIX sockets.
+
+**Analysis:**
+Efficient communication between components.
+
+---
+
+### Lifecycle Management
+
+Supervisor manages processes.
+
+**Analysis:**
+Prevents zombie processes.
+
+---
+
+## 6. Design Decisions
+
+* Namespace isolation → lightweight
+* Single supervisor → simple
+* UNIX sockets → efficient
+* Timer monitoring → low overhead
+* Signal scheduling → simple
+
+---
+
+## 7. Scheduler Results
+
+CPU workloads share execution time.
+
+**Conclusion:**
+Linux scheduling ensures fair CPU distribution.
 
 ---
 
 ## 8. Conclusion
 
-This project successfully implements a simplified container runtime integrated with a kernel memory monitor. It demonstrates key OS principles such as isolation, scheduling, memory management, and kernel-user communication.
+The project demonstrates:
+
+* Container isolation
+* Scheduling
+* Memory management
+* Kernel interaction
 
 ---
